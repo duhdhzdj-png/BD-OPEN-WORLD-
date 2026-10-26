@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="bn">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<meta name="theme-color" content="#081521">
+<title>Bangladesh City Explorer</title>
+<style>
+*{box-sizing:border-box}html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#101d27;color:#fff;font-family:system-ui,"Noto Sans Bengali",sans-serif;touch-action:none}canvas{display:block;width:100%;height:100%}
+#hud{position:fixed;inset:0;pointer-events:none}.glass{background:#071521d9;border:1px solid #ffffff24;border-radius:14px;backdrop-filter:blur(10px);box-shadow:0 8px 28px #0004}
+#brand{position:absolute;left:12px;top:12px;padding:10px 13px}.tag{font-size:10px;letter-spacing:2px;color:#75e8ff;font-weight:800}.title{font-weight:900;font-size:17px}.sub{font-size:10px;color:#b3c8d2}
+#stats{position:absolute;right:12px;top:12px;padding:10px 12px;display:flex;gap:13px}.stat small{display:block;color:#9db5c0;font-size:10px}.stat b{font-size:13px}
+#task{position:absolute;top:100px;left:12px;padding:10px 12px;max-width:230px;font-size:12px}#task strong{color:#c9ff70}
+#mapbox{position:absolute;right:12px;top:80px;width:112px;height:112px;padding:4px}#map{width:100%;height:100%;border-radius:10px}
+#tip{position:absolute;bottom:12px;left:50%;transform:translateX(-50%);padding:8px 12px;font-size:11px;white-space:nowrap;color:#d8e8ed}
+#controls{display:none;position:absolute;inset:0;pointer-events:none}.stickarea{position:absolute;left:14px;bottom:18px;width:116px;height:116px;border-radius:50%;background:#07152177;border:1px solid #ffffff30;pointer-events:auto}.stick{position:absolute;width:48px;height:48px;border-radius:50%;left:33px;top:33px;background:#8feeff80;border:1px solid #fff8}
+#buttons{position:absolute;right:12px;bottom:18px;display:flex;flex-direction:column;gap:8px;pointer-events:auto;align-items:center}.r{display:flex;gap:8px}.btn{border:1px solid #ffffff45;background:#071521e8;color:#fff;border-radius:13px;padding:11px 13px;min-width:54px;min-height:45px;font-weight:800;font-size:12px}.primary{background:#c9ff70;color:#17230a;border-color:#e0ffa9}
+#toast{position:absolute;top:46%;left:50%;transform:translate(-50%,-50%);padding:12px 16px;opacity:0;transition:opacity .2s;font-size:13px;text-align:center}
+@media(max-width:600px){#brand{left:8px;top:8px;padding:8px 10px}.title{font-size:14px}#stats{right:8px;top:8px;padding:8px;gap:8px}#task{top:78px;left:8px;max-width:165px;font-size:11px}#mapbox{right:8px;top:72px;width:92px;height:92px}#tip{bottom:145px;font-size:10px}.stickarea{left:10px;bottom:12px;width:106px;height:106px}.stick{left:29px;top:29px}#buttons{right:8px;bottom:12px;gap:6px}.btn{padding:9px;min-width:49px;min-height:42px}}
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+<div id="hud">
+ <div id="brand" class="glass"><div class="tag">OFFLINE • OPEN WORLD</div><div class="title">BANGLADESH <span style="color:#75e8ff">CITY EXPLORER</span></div><div class="sub">EXPLORE • DRIVE • DISCOVER</div></div>
+ <div id="stats" class="glass"><div class="stat"><small>গতি</small><b id="speed">0 km/h</b></div><div class="stat"><small>মোড</small><b id="mode">হাঁটা</b></div></div>
+ <div id="task" class="glass"><strong>✦ CITY MISSION</strong><br><span id="mission">শহর ঘুরে দেখুন। গাড়ির কাছে গিয়ে গাড়ি বাটন চাপুন।</span></div>
+ <div id="mapbox" class="glass"><canvas id="map" width="180" height="180"></canvas></div>
+ <div id="tip" class="glass">WASD / Arrow = চলুন • E = গাড়িতে ওঠা/নামা • Shift = দৌড়</div>
+ <div id="toast" class="glass"></div>
+ <div id="controls"><div class="stickarea" id="stickarea"><div class="stick" id="stick"></div></div><div id="buttons"><button class="btn primary" id="enter">🚗 গাড়ি</button><div class="r"><button class="btn" id="brake">◀ ব্রেক</button><button class="btn primary" id="gas">গ্যাস ▶</button></div><div class="r"><button class="btn" id="run">🏃 দৌড়</button><button class="btn" id="jump">⬆ লাফ</button></div></div></div>
+</div>
+<script>
+(()=>{'use strict';
+const c=document.getElementById('game'),ctx=c.getContext('2d'),mc=document.getElementById('map'),mx=mc.getContext('2d');
+const mobile=matchMedia('(pointer:coarse)').matches||innerWidth<700;
+let W=0,H=0,dpr=1,keys={},joy={x:0,y:0},inCar=false,angle=0,speed=0,camX=0,camY=0,jump=0,toastT=0;
+const player={x:0,y:0},car={x:42,y:30,a:Math.PI/2};
+const roads=[],buildings=[],trees=[],cars=[];
+const block=170,road=42,world=900;
+function rand(seed){let x=Math.sin(seed*127.1+311.7)*43758.5453;return x-Math.floor(x)}
+function resize(){W=innerWidth;H=innerHeight;dpr=Math.min(devicePixelRatio||1,1.6);c.width=W*dpr;c.height=H*dpr;ctx.setTransform(dpr,0,0,dpr,0,0)}
+addEventListener('resize',resize);resize();
+function makeWorld(){
+ for(let x=-world;x<=world;x+=block){roads.push({x,y:0,w:road,h:world*2});roads.push({x:0,y:x,w:world*2,h:road})}
+ for(let gx=-5;gx<=5;gx++)for(let gy=-5;gy<=5;gy++){
+  const cx=gx*block+block/2,cy=gy*block+block/2;
+  if(rand(gx*31+gy*13)<.12){trees.push({x:cx,y:cy,s:45+rand(gx+gy*4)*28});continue}
+  for(let q=0;q<4;q++){let ox=q%2?39:-39,oy=q>1?39:-39;if(rand(gx*91+gy*23+q)>.14){let w=35+rand(gx+q*9)*22,h=35+rand(gy+q*7)*22;buildings.push({x:cx+ox,y:cy+oy,w,h,ht:35+rand(gx*4+gy*3+q)*95,col:['#d9d0bd','#c5d8d8','#d8bfa7','#c4d0bc','#e4e1d6','#b8ced9'][Math.floor(rand(gx*7+gy*17+q)*6)],roof:['#777e7c','#a99c8a','#687d83'][Math.floor(rand(gx+gy+q)*3)]})}}
+ }
+ for(let i=0;i<22;i++){let x=(rand(i*7)-.5)*world*1.7,y=(rand(i*19)-.5)*world*1.7;if(Math.abs(x%block)>road&&Math.abs(y%block)>road)cars.push({x,y,a:rand(i*13)>0.5?0:Math.PI/2,col:['#d6ad48','#d14f42','#f0e8d6','#3b8da5','#47865f'][i%5]})}
+}
+makeWorld();
+function roundRect(x,y,w,h,r,fill){ctx.fillStyle=fill;ctx.beginPath();ctx.roundRect(x,y,w,h,r);ctx.fill()}
+function worldToScreen(x,y){return {x:W/2+(x-camX),y:H/2+(y-camY)}}
+function drawRoads(){
+ ctx.fillStyle='#789b70';ctx.fillRect(0,0,W,H);
+ const startX=Math.floor((camX-W)/block)*block,endX=camX+W;
+ for(let x=startX;x<endX;x+=block){let s=worldToScreen(x,0);ctx.fillStyle='#bcb9aa';ctx.fillRect(s.x-road/2,s.y-H/2,road,H);ctx.fillStyle='#343b43';ctx.fillRect(s.x-road/2+4,0,road-8,H);ctx.strokeStyle='#e5d39a';ctx.lineWidth=2;ctx.setLineDash([13,12]);ctx.beginPath();ctx.moveTo(s.x,H/2-(camY));ctx.lineTo(s.x,H);ctx.stroke();ctx.setLineDash([])}
+ const startY=Math.floor((camY-H)/block)*block;
+ for(let y=startY;y<camY+H;y+=block){let s=worldToScreen(0,y);ctx.fillStyle='#bcb9aa';ctx.fillRect(0,s.y-road/2,W,road);ctx.fillStyle='#343b43';ctx.fillRect(0,s.y-road/2+4,W,road-8);ctx.strokeStyle='#e5d39a';ctx.lineWidth=2;ctx.setLineDash([13,12]);ctx.beginPath();ctx.moveTo(0,s.y);ctx.lineTo(W,s.y);ctx.stroke();ctx.setLineDash([])}
+}
+function drawBuilding(b){let p=worldToScreen(b.x,b.y),w=b.w,h=b.h,ht=b.ht,visible=p.x>-120&&p.x<W+120&&p.y>-160&&p.y<H+120;if(!visible)return;
+ // stylized isometric-ish facade and long shadow
+ ctx.fillStyle='#17252b30';ctx.beginPath();ctx.moveTo(p.x-w/2+10,p.y-h/2+12);ctx.lineTo(p.x+w/2+ht*.22,p.y-h/2-ht*.15);ctx.lineTo(p.x+w/2+ht*.22,p.y+h/2+ht*.15);ctx.lineTo(p.x-w/2,p.y+h/2);ctx.closePath();ctx.fill();
+ ctx.fillStyle=b.col;ctx.fillRect(p.x-w/2,p.y-h/2-ht*.22,w,h+ht*.22);
+ ctx.fillStyle=b.roof;ctx.fillRect(p.x-w/2-3,p.y-h/2-ht*.22-5,w+6,h*.18+5);
+ ctx.fillStyle='#6da9b5';let cols=Math.max(2,Math.floor(w/15)),rows=Math.max(2,Math.floor(ht/20));for(let r=0;r<rows;r++)for(let q=0;q<cols;q++){let wx=p.x-w/2+6+q*(w-12)/cols,wy=p.y-h/2-ht*.22+8+r*(ht*.22)/rows;ctx.fillRect(wx,wy,Math.max(3,(w-15)/cols*.45),Math.max(4,ht*.22/rows*.45))}
+}
+function drawTree(t){let p=worldToScreen(t.x,t.y);if(p.x<-70||p.x>W+70||p.y<-70||p.y>H+70)return;ctx.fillStyle='#243d2a40';ctx.beginPath();ctx.ellipse(p.x+6,p.y+10,t.s*.6,t.s*.28,0,0,Math.PI*2);ctx.fill();ctx.fillStyle='#73523a';ctx.fillRect(p.x-4,p.y-t.s*.15,8,t.s*.6);ctx.fillStyle='#3e7849';ctx.beginPath();ctx.arc(p.x,p.y-t.s*.2,t.s*.52,0,Math.PI*2);ctx.fill();ctx.fillStyle='#55915a';ctx.beginPath();ctx.arc(p.x-t.s*.18,p.y-t.s*.3,t.s*.29,0,Math.PI*2);ctx.fill()}
+function drawCar(o,playerCar=false){let p=worldToScreen(o.x,o.y);if(p.x<-60||p.x>W+60||p.y<-60||p.y>H+60)return;ctx.save();ctx.translate(p.x,p.y);ctx.rotate(o.a||0);ctx.fillStyle='#0004';ctx.fillRect(-15,-8+4,34,18);ctx.fillStyle=o.col||'#d8ad45';ctx.beginPath();ctx.roundRect(-17,-10,34,20,5);ctx.fill();ctx.fillStyle='#263b45';ctx.fillRect(-8,-7,14,14);ctx.fillStyle='#e7f4f5';ctx.fillRect(-7,-6,5,12);ctx.fillStyle='#fff0c7';ctx.fillRect(12,-7,3,4);ctx.fillRect(12,3,3,4);ctx.fillStyle='#20272b';ctx.fillRect(-11,-12,7,3);ctx.fillRect(5,-12,7,3);ctx.fillRect(-11,9,7,3);ctx.fillRect(5,9,7,3);if(playerCar){ctx.strokeStyle='#bfff75';ctx.lineWidth=2;ctx.strokeRect(-20,-13,40,26)}ctx.restore()}
+function drawPlayer(){if(inCar)return;let p=worldToScreen(player.x,player.y);ctx.fillStyle='#0004';ctx.beginPath();ctx.ellipse(p.x,p.y+9,10,5,0,0,Math.PI*2);ctx.fill();ctx.fillStyle='#f0e9dc';ctx.beginPath();ctx.roundRect(p.x-7,p.y-10-jump,14,22,5);ctx.fill();ctx.fillStyle='#bd8966';ctx.beginPath();ctx.arc(p.x,p.y-15-jump,6,0,Math.PI*2);ctx.fill();ctx.fillStyle='#293b38';ctx.fillRect(p.x-6,p.y-21-jump,12,4)}
+function render(){
+ const target=inCar?car:player;camX+=(target.x-camX)*.11;camY+=(target.y-camY)*.11;
+ drawRoads();for(const b of buildings)drawBuilding(b);for(const t of trees)drawTree(t);for(const o of cars)drawCar(o);drawCar(car,true);drawPlayer();drawMap();
+}
+function drawMap(){mx.clearRect(0,0,180,180);mx.fillStyle='#70986d';mx.fillRect(0,0,180,180);mx.strokeStyle='#343b43';mx.lineWidth=6;for(let p=0;p<=180;p+=30){mx.beginPath();mx.moveTo(p,0);mx.lineTo(p,180);mx.stroke();mx.beginPath();mx.moveTo(0,p);mx.lineTo(180,p);mx.stroke()}const t=inCar?car:player;mx.fillStyle='#fff';mx.beginPath();mx.arc(90+(t.x-camX)*.14,90+(t.y-camY)*.14,4,0,Math.PI*2);mx.fill();mx.strokeStyle='#bfff75';mx.lineWidth=2;mx.stroke()}
+function toast(s){let el=document.getElementById('toast');el.textContent=s;el.style.opacity=1;clearTimeout(toastT);toastT=setTimeout(()=>el.style.opacity=0,1800)}
+function nearCar(){return Math.hypot(player.x-car.x,player.y-car.y)<62}
+function toggleCar(){if(inCar){inCar=false;player.x=car.x+45;player.y=car.y+15;speed=0;toast('গাড়ি থেকে নেমেছেন');}else if(nearCar()){inCar=true;toast('ড্রাইভ মোড চালু! গ্যাস ও স্টিয়ারিং ব্যবহার করুন।')}else toast('গাড়ির কাছে যান, তারপর গাড়ি বাটন চাপুন।');updateHud()}
+function updateHud(){document.getElementById('mode').textContent=inCar?'ড্রাইভ':'হাঁটা';document.getElementById('mission').textContent=inCar?'রাস্তা ধরে শহর ঘুরুন। গতি নিয়ন্ত্রণ করুন!':'শহর ঘুরে দেখুন। গাড়ির কাছে গিয়ে গাড়ি বাটন চাপুন।';document.getElementById('enter').textContent=inCar?'🚶 নামুন':'🚗 গাড়ি'}
+function update(dt){
+ let fx=(keys.KeyW||keys.ArrowUp?1:0)-(keys.KeyS||keys.ArrowDown?1:0)-joy.y;
+ let sx=(keys.KeyD||keys.ArrowRight?1:0)-(keys.KeyA||keys.ArrowLeft?1:0)+joy.x;
+ if(inCar){if(fx>0)speed+=210*dt;else if(fx<0)speed-=270*dt;else speed*=Math.pow(.94,dt*60);speed=Math.max(-100,Math.min(260,speed));car.a+=sx*dt*(speed>=0?1:-1)*1.8;car.x+=Math.sin(car.a)*speed*dt*.18;car.y-=Math.cos(car.a)*speed*dt*.18;car.x=Math.max(-world,Math.min(world,car.x));car.y=Math.max(-world,Math.min(world,car.y))}
+ else{let l=Math.hypot(fx,sx)||1;fx/=Math.max(1,l);sx/=Math.max(1,l);let sp=keys.ShiftLeft?155:88;player.x+=sx*sp*dt;player.y-=fx*sp*dt;if(jump>0)jump=Math.max(0,jump-190*dt)}
+ document.getElementById('speed').textContent=Math.round(Math.abs(speed)*.36)+' km/h';updateHud();render();
+}
+let last=performance.now();function loop(now){let dt=Math.min((now-last)/1000,.04);last=now;update(dt);requestAnimationFrame(loop)}
+addEventListener('keydown',e=>{keys[e.code]=true;if(['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Space'].includes(e.code))e.preventDefault();if((e.code==='KeyE'||e.code==='Enter')&&!e.repeat)toggleCar();if(e.code==='Space'&&!inCar)jump=34});
+addEventListener('keyup',e=>keys[e.code]=false);
+document.getElementById('enter').onclick=toggleCar;
+const area=document.getElementById('stickarea'),stick=document.getElementById('stick');let active=false;
+function joyMove(e){const r=area.getBoundingClientRect();let dx=e.clientX-(r.left+r.width/2),dy=e.clientY-(r.top+r.height/2),d=Math.hypot(dx,dy),m=31;if(d>m){dx=dx/d*m;dy=dy/d*m}joy.x=dx/m;joy.y=dy/m;stick.style.left=(r.width/2-24+dx)+'px';stick.style.top=(r.height/2-24+dy)+'px'}
+area.addEventListener('pointerdown',e=>{active=true;area.setPointerCapture(e.pointerId);joyMove(e)});area.addEventListener('pointermove',e=>{if(active)joyMove(e)});function stopJoy(){active=false;joy.x=joy.y=0;stick.style.left=(area.clientWidth/2-24)+'px';stick.style.top=(area.clientHeight/2-24)+'px'}area.addEventListener('pointerup',stopJoy);area.addEventListener('pointercancel',stopJoy);
+function hold(id,key){let el=document.getElementById(id);el.addEventListener('pointerdown',e=>{e.preventDefault();keys[key]=true;el.setPointerCapture(e.pointerId)});['pointerup','pointercancel','lostpointercapture'].forEach(ev=>el.addEventListener(ev,()=>keys[key]=false))}
+hold('gas','ArrowUp');hold('brake','ArrowDown');hold('run','ShiftLeft');hold('jump','Space');
+if(mobile){document.getElementById('controls').style.display='block';document.getElementById('tip').textContent='জয়স্টিক = চলুন • 🚗 = গাড়ি • গ্যাস/ব্রেক = চালান'}
+player.x=-8;player.y=0;car.x=42;car.y=30;updateHud();requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>
