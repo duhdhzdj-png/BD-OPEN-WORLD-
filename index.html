@@ -1,1 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Flat City - Open World</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{overflow:hidden;background:#87CEEB;font-family:system-ui}
+#ui{position:fixed;top:10px;left:10px;background:#000a;color:#fff;padding:10px 14px;border-radius:10px;font-size:12px;z-index:10}
+#map{position:fixed;bottom:10px;right:10px;width:120px;height:120px;background:#0008;border-radius:50%;border:2px solid #fff;z-index:10}
+#dot{position:absolute;width:6px;height:6px;background:#ff1744;border-radius:50%;left:50%;top:50%}
+</style>
+<script type="importmap">{"imports":{"three":"https://unpkg.com/three@0.160.0/build/three.module.js","three/addons/":"https://unpkg.com/three@0.160.0/examples/jsm/"}}</script>
+</head>
+<body>
+<div id="ui">WASD / Arrow: Move<br>Mouse: Look<br>City: Nʙ Gᴀᴍɪɴɢ 〆 TOP-UP City</div>
+<div id="map"><div id="dot"></div></div>
+<script type="module">
+import * as THREE from 'three';
+const scene=new THREE.Scene();
+scene.background=new THREE.Color(0x87CEEB);
+scene.fog=new THREE.Fog(0x87CEEB,50,200);
+const camera=new THREE.PerspectiveCamera(75,innerWidth/innerHeight,0.1,1000);
+const renderer=new THREE.WebGLRenderer({antialias:true});
+renderer.setSize(innerWidth,innerHeight);
+renderer.shadowMap.enabled=true;
+document.body.appendChild(renderer.domElement);
 
+// Lights - flat design
+const ambient=new THREE.AmbientLight(0xffffff,0.7);
+scene.add(ambient);
+const sun=new THREE.DirectionalLight(0xffffff,0.8);
+sun.position.set(50,100,50);
+sun.castShadow=true;
+scene.add(sun);
+
+// Ground - flat
+const ground=new THREE.Mesh(new THREE.PlaneGeometry(500,500),new THREE.MeshLambertMaterial({color:0x4a7c59}));
+ground.rotation.x=-Math.PI/2;
+ground.receiveShadow=true;
+scene.add(ground);
+
+// Roads - flat style
+const roadMat=new THREE.MeshLambertMaterial({color:0x2a2a2a});
+for(let i=-200;i<=200;i+=50){
+ const r=new THREE.Mesh(new THREE.PlaneGeometry(500,8),roadMat);
+ r.rotation.x=-Math.PI/2;r.position.set(0,0.02,i);
+ scene.add(r);
+ const r2=new THREE.Mesh(new THREE.PlaneGeometry(8,500),roadMat);
+ r2.rotation.x=-Math.PI/2;r2.position.set(i,0.03,0);
+ scene.add(r2);
+}
+
+// Flat buildings - low poly city
+const colors=[0xff6b6b,0x4ecdc4,0xffe66d,0xa8e6cf,0xff8e53,0x9b59b6];
+for(let i=0;i<80;i++){
+ const w=5+Math.random()*8;
+ const h=8+Math.random()*20;
+ const d=5+Math.random()*8;
+ const x=(Math.random()-0.5)*400;
+ const z=(Math.random()-0.5)*400;
+ if(Math.abs(x%50)<8||Math.abs(z%50)<8)continue;
+ const geo=new THREE.BoxGeometry(w,h,d);
+ const mat=new THREE.MeshLambertMaterial({color:colors[i%colors.length]});
+ const b=new THREE.Mesh(geo,mat);
+ b.position.set(x,h/2,z);
+ b.castShadow=true;
+ b.receiveShadow=true;
+ scene.add(b);
+ // Windows flat
+ const win=new THREE.Mesh(new THREE.PlaneGeometry(w*0.6,h*0.6),new THREE.MeshBasicMaterial({color:0x000000,transparent:true,opacity:0.2}));
+ win.position.set(0,0,d/2+0.01);
+ b.add(win);
+}
+
+// Player
+let keys={};
+document.addEventListener('keydown',e=>keys[e.key.toLowerCase()]=true);
+document.addEventListener('keyup',e=>keys[e.key.toLowerCase()]=false);
+camera.position.set(0,10,20);
+let yaw=0,pitch=-0.2;
+let isDragging=false;
+document.addEventListener('mousedown',()=>isDragging=true);
+document.addEventListener('mouseup',()=>isDragging=false);
+document.addEventListener('mousemove',e=>{
+ if(!isDragging)return;
+ yaw-=e.movementX*0.005;
+ pitch=Math.max(-1,Math.min(0.5,pitch-e.movementY*0.005));
+});
+
+const speed=0.5;
+function animate(){
+ requestAnimationFrame(animate);
+ const forward=new THREE.Vector3(0,0,-1).applyAxisAngle(new THREE.Vector3(0,1,0),yaw);
+ const right=new THREE.Vector3(1,0,0).applyAxisAngle(new THREE.Vector3(0,1,0),yaw);
+ if(keys['w']||keys['arrowup'])camera.position.addScaledVector(forward,speed);
+ if(keys['s']||keys['arrowdown'])camera.position.addScaledVector(forward,-speed);
+ if(keys['a']||keys['arrowleft'])camera.position.addScaledVector(right,-speed);
+ if(keys['d']||keys['arrowright'])camera.position.addScaledVector(right,speed);
+ camera.rotation.order='YXZ';
+ camera.rotation.y=yaw;
+ camera.rotation.x=pitch;
+ document.getElementById('dot').style.left=(50+camera.position.x/4)+'%';
+ document.getElementById('dot').style.top=(50+camera.position.z/4)+'%';
+ renderer.render(scene,camera);
+}
+animate();
+window.addEventListener('resize',()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight)});
+</script>
+</body>
+  </html>
